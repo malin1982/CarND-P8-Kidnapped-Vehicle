@@ -33,7 +33,7 @@ void ParticleFilter::init( double x,  double y,  double theta,  double std[]) {
   weights.clear();
   for (unsigned int i = 0; i < num_particles; ++i) {
     Particle new_particle;
-    
+
     // Sample  and from these normal distributions like this:
     //	 sample_x = dist_x(gen);
     //	 where "gen" is the random engine initialized earlier.
@@ -59,18 +59,20 @@ void ParticleFilter::prediction( double delta_t,  double std_pos[],  double velo
   default_random_engine gen;
 
   // Create normal distributions for x, y and psi
+  // centring the noise gaussian distributions at 0
+  // so they could be defined outside of the particle loop and reused for each particle
   normal_distribution<double> dist_x(0, std_pos[0]);
   normal_distribution<double> dist_y(0, std_pos[1]);
   normal_distribution<double> dist_theta(0, std_pos[2]);
 
   for (unsigned int i = 0; i < num_particles; ++i) {
     Particle& current_particle = particles[i];
-    
+
       if (fabs(yaw_rate)>0.001)
       {
-        double theta_new   = current_particle.theta + yaw_rate*delta_t;
-        double theta_old   = current_particle.theta;
-        
+        const double theta_new   = current_particle.theta + yaw_rate*delta_t;
+        const double theta_old   = current_particle.theta;
+
         current_particle.x      += velocity/yaw_rate*(sin(theta_new)-sin(theta_old));
         current_particle.y      += velocity/yaw_rate*(cos(theta_old)-cos(theta_new));
         current_particle.theta   = theta_new;
@@ -109,21 +111,27 @@ void ParticleFilter::updateWeights( double sensor_range,  double std_landmark[],
 	//   3.33. Note that you'll need to switch the minus sign in that equation to a plus to account
 	//   for the fact that the map's y-axis actually points downwards.)
 	//   http://planning.cs.uiuc.edu/node99.html
-  double sum_prob = 0.0;
+
+  //double sum_prob = 0.0;
+  //Normalising the weights isn't strictly necessary
+  //as the discrete_distibution doesn't have to behave as a strict probability density function.
+
+  const double factor = 1 / (2 * M_PI * std_landmark[0] * std_landmark[1])
   // loop thru all particles
   for (unsigned int i = 0; i < num_particles; ++i)
   {
-    double xParticle = particles[i].x;
-    double yParticle = particles[i].y;
-    double theta     = particles[i].theta;
+    const double xParticle = particles[i].x;
+    const double yParticle = particles[i].y;
+    const double theta     = particles[i].theta;
     double prob            = 1.0;
-    
+
     //Predicted Landmarks (<=sensor_range)
+    //filtering the landmarks for only those inside the sensor range before associating them with the observations
     vector<Map::single_landmark_s> predicted;
     for (unsigned int j=0; j<map_landmarks.landmark_list.size(); ++j) {
-      double xLand = map_landmarks.landmark_list[j].x_f;
-      double yLand = map_landmarks.landmark_list[j].y_f;
-      
+      const double xLand = map_landmarks.landmark_list[j].x_f;
+      const double yLand = map_landmarks.landmark_list[j].y_f;
+
       if (dist(xLand, yLand, xParticle, yParticle) <= sensor_range) {
         predicted.push_back(map_landmarks.landmark_list[j]);
       }
@@ -137,16 +145,16 @@ void ParticleFilter::updateWeights( double sensor_range,  double std_landmark[],
       double min_dist       = sensor_range;
       double x_diff         = sensor_range;
       double y_diff         = sensor_range;
-      
-      double xMap = xParticle + xVehicle*cos(theta) - yVehicle*sin(theta);
-      double yMap = yParticle + xVehicle*sin(theta) + yVehicle*cos(theta);
-      
+
+      const double xMap = xParticle + xVehicle*cos(theta) - yVehicle*sin(theta);
+      const double yMap = yParticle + xVehicle*sin(theta) + yVehicle*cos(theta);
+
       for (unsigned int k = 0; k < predicted.size(); ++k)
       {
-        double xLandmark = predicted[k].x_f;
-        double yLandmark = predicted[k].y_f;
-        double cur_dist = dist(xLandmark, yLandmark, xMap, yMap);
-        
+        const double xLandmark = predicted[k].x_f;
+        const double yLandmark = predicted[k].y_f;
+        const double cur_dist = dist(xLandmark, yLandmark, xMap, yMap);
+
         if(cur_dist < min_dist)
         {
           min_dist = cur_dist;
@@ -156,18 +164,18 @@ void ParticleFilter::updateWeights( double sensor_range,  double std_landmark[],
       }
 
       // update probability wrt each observation
-      prob *= (1 / (2 * M_PI * std_landmark[0] * std_landmark[1])) *
-      exp(-0.5 * ((x_diff * x_diff / (std_landmark[0] * std_landmark[0])) +
+      prob *= factor * exp(-0.5 * ((x_diff * x_diff / (std_landmark[0] * std_landmark[0])) +
                    (y_diff * y_diff / (std_landmark[1] * std_landmark[1]))));
     }
-    
+
     particles[i].weight = prob;
-    sum_prob += prob;
+    //sum_prob += prob;
+    weights[i] = particles[i].weight;
     }
   // update the weights vector with normalized weights
-  for (unsigned int i = 0; i < num_particles; ++i) {
-    weights[i] = particles[i].weight / sum_prob;
-  }
+  //for (unsigned int i = 0; i < num_particles; ++i) {
+  //  weights[i] = particles[i].weight / sum_prob;
+  //}
 }
 
 void ParticleFilter::resample() {
@@ -183,7 +191,7 @@ void ParticleFilter::resample() {
     new_particles.push_back(particles[weighted_index]);
   }
   particles = new_particles;
-  
+
 }
 
 void ParticleFilter::write(std::string filename) {
